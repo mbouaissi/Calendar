@@ -458,7 +458,7 @@ fun StylePickerDialog(
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Reset to default", color = Color.Red)
+                    Text("Reset", color = Color.Red)
                 }
             }
         },
