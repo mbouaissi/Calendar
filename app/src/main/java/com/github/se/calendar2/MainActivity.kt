@@ -22,10 +22,13 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -145,9 +148,18 @@ fun CalendarScreen(navController: NavController, currentMonth: YearMonth, activi
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                    calendarRef.value?.let { view ->
+                        val bitmap = captureViewAsBitmap(view)
+                        exportCalendar(context, bitmap)
+                    }
+                }) {
+                    Icon(imageVector = Icons.Default.Share, contentDescription = "Export Calendar")
+                }
                     IconButton(onClick = { navController.navigate("calendar/${currentMonth.plusMonths(1)}") }) {
                         Icon(imageVector = Icons.Default.ArrowForward, contentDescription = "Next Month")
                     }
+
                 }
             )
         }
@@ -202,16 +214,7 @@ fun CalendarScreen(navController: NavController, currentMonth: YearMonth, activi
                 }
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
 
-            Button(onClick = {
-                calendarRef.value?.let { view ->
-                    val bitmap = captureViewAsBitmap(view)
-                    exportCalendar(context, bitmap)
-                }
-            }) {
-                Text("Export Calendar as Image")
-            }
         }
 
         if (showDialog && selectedDay != null) {
@@ -295,6 +298,8 @@ fun Legend() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(max = 400.dp) // Set a max height to enable scrolling if needed
+            .verticalScroll(rememberScrollState()) // Enable scrolling
             .padding(8.dp)
     ) {
         Text("Légende:", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
@@ -326,25 +331,50 @@ fun StylePickerDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismissRequest,
-        title = { Text("Choose a style") },
+        title = { Text("Choisis ton horaire:") },
         text = {
             Column {
-                Text("Select a Color:")
                 LazyColumn {
                     items(colors) { (color, label) ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().padding(4.dp).clickable {
-                                onStyleSelected(DayStyle(color = color.toArgb()))
-                            }
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(4.dp)
+                                .clickable {
+                                    onStyleSelected(DayStyle(color = color.toArgb()))
+                                }
                         ) {
-                            Box(modifier = Modifier.size(40.dp).background(color))
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(color)
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(text = label)
                         }
                     }
                 }
+
                 Spacer(modifier = Modifier.height(16.dp))
+
+                // Reset button (Bin Icon) to clear the selected style
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onStyleSelected(DayStyle(color = null, imageUri = null)) }
+                        .padding(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Reset Day",
+                        tint = Color.Red,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Reset to default", color = Color.Red)
+                }
             }
         },
         confirmButton = {
