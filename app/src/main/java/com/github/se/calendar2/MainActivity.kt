@@ -2,6 +2,7 @@ package com.github.se.calendar2
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
@@ -27,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -38,6 +40,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -141,23 +144,72 @@ fun CalendarScreen(navController: NavController, currentMonth: YearMonth, activi
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("${currentMonth.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${currentMonth.year}") },
+                title = {
+                    Text(
+                        "${
+                            currentMonth.month.getDisplayName(
+                                TextStyle.FULL,
+                                Locale.getDefault()
+                            )
+                        } ${currentMonth.year}"
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = { navController.navigate("calendar/${currentMonth.minusMonths(1)}") }) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Previous Month")
+                    IconButton(onClick = {
+                        navController.navigate(
+                            "calendar/${
+                                currentMonth.minusMonths(
+                                    1
+                                )
+                            }"
+                        )
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Previous Month"
+                        )
                     }
                 },
                 actions = {
                     IconButton(onClick = {
-                    calendarRef.value?.let { view ->
-                        val bitmap = captureViewAsBitmap(view)
-                        exportCalendar(context, bitmap)
+                        calendarRef.value?.let { view ->
+                            val bitmap = captureViewAsBitmap(view)
+                            exportCalendar(context, bitmap)
+                        }
+                    }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.photo_camera), // Use your drawable
+                            modifier = Modifier.size(24.dp),
+                            contentDescription = "Export Calendar"
+                        )
                     }
-                }) {
-                    Icon(imageVector = Icons.Default.Share, contentDescription = "Export Calendar")
-                }
-                    IconButton(onClick = { navController.navigate("calendar/${currentMonth.plusMonths(1)}") }) {
-                        Icon(imageVector = Icons.Default.ArrowForward, contentDescription = "Next Month")
+                    IconButton(onClick = {
+                        calendarRef.value?.let { view ->
+                            val bitmap = captureViewAsBitmap(view)
+                            val imageUri = exportCalendar(context, bitmap)
+                            if (imageUri != null) {
+                                shareOnWhatsApp(context, imageUri)
+                            } else {
+                                Toast.makeText(context, "Failed to share!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }) {
+                        Icon(imageVector = Icons.Default.Share, contentDescription = "Share Calendar")
+                    }
+
+                    IconButton(onClick = {
+                        navController.navigate(
+                            "calendar/${
+                                currentMonth.plusMonths(
+                                    1
+                                )
+                            }"
+                        )
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = "Next Month"
+                        )
                     }
 
                 }
@@ -184,7 +236,10 @@ fun CalendarScreen(navController: NavController, currentMonth: YearMonth, activi
                                     ) {
                                         items(DayOfWeek.values()) { dayOfWeek ->
                                             Text(
-                                                text = dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).take(2),
+                                                text = dayOfWeek.getDisplayName(
+                                                    TextStyle.SHORT,
+                                                    Locale.getDefault()
+                                                ).take(2),
                                                 textAlign = TextAlign.Center,
                                                 modifier = Modifier
                                                     .background(Color.LightGray)
@@ -192,9 +247,14 @@ fun CalendarScreen(navController: NavController, currentMonth: YearMonth, activi
                                                     .padding(4.dp)
                                             )
                                         }
-                                        items(currentMonth.atDay(1).dayOfWeek.value - 1) { Spacer(modifier = Modifier.size(40.dp)) }
+                                        items(currentMonth.atDay(1).dayOfWeek.value - 1) {
+                                            Spacer(
+                                                modifier = Modifier.size(40.dp)
+                                            )
+                                        }
                                         items(currentMonth.lengthOfMonth()) { day ->
-                                            val dayStyleFlow = activity.getDayStyleFlow(currentMonthKey, day + 1)
+                                            val dayStyleFlow =
+                                                activity.getDayStyleFlow(currentMonthKey, day + 1)
                                             val dayStyle by dayStyleFlow.collectAsState(initial = DayStyle())
 
                                             DayBox(day = day + 1, dayStyle = dayStyle, onClick = {
@@ -228,6 +288,7 @@ fun CalendarScreen(navController: NavController, currentMonth: YearMonth, activi
         }
     }
 }
+
 fun captureViewAsBitmap(view: android.view.View): Bitmap {
     val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(bitmap)
@@ -240,10 +301,10 @@ fun captureViewAsBitmap(view: android.view.View): Bitmap {
 }
 
 
-fun exportCalendar(context: Context, bitmap: Bitmap?) {
+fun exportCalendar(context: Context, bitmap: Bitmap?): Uri? {
     if (bitmap == null) {
         Toast.makeText(context, "Failed to capture calendar!", Toast.LENGTH_SHORT).show()
-        return
+        return null
     }
 
     val filename = "calendar_${System.currentTimeMillis()}.png"
@@ -254,16 +315,36 @@ fun exportCalendar(context: Context, bitmap: Bitmap?) {
     }
 
     val contentResolver = context.contentResolver
-    val imageUri: Uri? = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+    val imageUri: Uri? =
+        contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
 
     imageUri?.let {
         contentResolver.openOutputStream(it)?.use { outputStream ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
-            Toast.makeText(context, "Calendar exported to Pictures/CalendarExports", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                context,
+                "Calendar exported to Pictures/CalendarExports",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
+    return imageUri
 }
 
+
+fun shareOnWhatsApp(context: Context, imageUri: Uri) {
+    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "image/png"
+        putExtra(Intent.EXTRA_STREAM, imageUri)
+        setPackage("com.whatsapp") // Opens WhatsApp directly
+    }
+
+    try {
+        context.startActivity(shareIntent)
+    } catch (e: Exception) {
+        Toast.makeText(context, "WhatsApp not installed!", Toast.LENGTH_SHORT).show()
+    }
+}
 
 
 @Composable
@@ -302,7 +383,11 @@ fun Legend() {
             .verticalScroll(rememberScrollState()) // Enable scrolling
             .padding(8.dp)
     ) {
-        Text("Légende:", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
+        Text(
+            "Légende:",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
 
         colors.forEach { (color, label) ->
             Row(
