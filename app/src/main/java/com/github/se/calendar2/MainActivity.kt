@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Paint
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
@@ -44,6 +45,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.datastore.preferences.core.edit
@@ -90,6 +92,7 @@ data class DayStyle(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         enableEdgeToEdge()
         setContent {
             Calendar2Theme {
@@ -173,8 +176,11 @@ fun CalendarScreen(navController: NavController, currentMonth: YearMonth, activi
                 actions = {
                     IconButton(onClick = {
                         calendarRef.value?.let { view ->
-                            val bitmap = captureViewAsBitmap(view)
-                            exportCalendar(context, bitmap)
+                            calendarRef.value?.let { view ->
+                                val monthYear = "${currentMonth.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${currentMonth.year}"
+                                val bitmap = captureViewAsBitmap(view, monthYear)
+                                exportCalendar(context, bitmap)
+                            }
                         }
                     }) {
                         Icon(
@@ -185,12 +191,15 @@ fun CalendarScreen(navController: NavController, currentMonth: YearMonth, activi
                     }
                     IconButton(onClick = {
                         calendarRef.value?.let { view ->
-                            val bitmap = captureViewAsBitmap(view)
-                            val imageUri = exportCalendar(context, bitmap)
-                            if (imageUri != null) {
-                                shareOnWhatsApp(context, imageUri)
-                            } else {
-                                Toast.makeText(context, "Failed to share!", Toast.LENGTH_SHORT).show()
+                            calendarRef.value?.let { view ->
+                                val monthYear = "${currentMonth.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${currentMonth.year}"
+                                val bitmap = captureViewAsBitmap(view, monthYear)
+                                val imageUri = exportCalendar(context, bitmap)
+                                if (imageUri != null) {
+                                    shareOnWhatsApp(context, imageUri)
+                                } else {
+                                    Toast.makeText(context, "Failed to share!", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }
                     }) {
@@ -289,16 +298,31 @@ fun CalendarScreen(navController: NavController, currentMonth: YearMonth, activi
     }
 }
 
-fun captureViewAsBitmap(view: android.view.View): Bitmap {
-    val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+
+fun captureViewAsBitmap(view: android.view.View, monthYear: String): Bitmap {
+    // Create a new bitmap with extra space for the month and year title
+    val bitmap = Bitmap.createBitmap(view.width, view.height + 100, Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(bitmap)
 
+    // Set background color to white
     canvas.drawColor(android.graphics.Color.WHITE)
 
+    // Draw the month and year at the top
+    val textPaint = Paint().apply {
+        color = android.graphics.Color.BLACK
+        textSize = 50f
+        textAlign = Paint.Align.CENTER
+        isAntiAlias = true
+    }
+    canvas.drawText(monthYear, (view.width / 2).toFloat(), 60f, textPaint)
+
+    // Draw the actual calendar below the title
+    canvas.translate(0f, 100f) // Shift calendar down to make space for the title
     view.draw(canvas)
 
     return bitmap
 }
+
 
 
 fun exportCalendar(context: Context, bitmap: Bitmap?): Uri? {
@@ -383,12 +407,6 @@ fun Legend() {
             .verticalScroll(rememberScrollState()) // Enable scrolling
             .padding(8.dp)
     ) {
-        Text(
-            "Légende:",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-
         colors.forEach { (color, label) ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -403,7 +421,8 @@ fun Legend() {
                         .border(1.dp, Color.Black)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = label, style = MaterialTheme.typography.bodySmall)
+                Text(text = label,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp))
             }
         }
     }

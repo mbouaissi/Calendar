@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.github.se.calendar2"
-        minSdk = 29
+        minSdk = 26
         targetSdk = 34
         versionCode = 2
         versionName = "2.0"
@@ -47,6 +47,7 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
 }
 
 dependencies {
