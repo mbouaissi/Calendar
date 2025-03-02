@@ -1,11 +1,17 @@
 package com.github.se.calendar2
 
+import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
+import android.provider.MediaStore
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,10 +31,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -41,6 +52,7 @@ import androidx.navigation.compose.rememberNavController
 import coil.compose.rememberAsyncImagePainter
 import com.github.se.calendar2.ui.theme.Calendar2Theme
 import com.google.gson.Gson
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -60,12 +72,12 @@ val colors = listOf(
     Color(0xFF757575) to "Horaire 8: 7h30-11h00 17h00-20h00", // Darker gray
     Color(0xFF7986CB) to "Horaire 9: 8h00-11h15 12h00-15h15", // Light gray
     Color(0xFF009688) to "Horaire de nuit \uD83C\uDF19", // Light gray
-
+    Color(0xFF00BCD4) to "Jour férié 🎉" // **Bright cyan for holidays**
 )
 
 data class DayStyle(
-    val color: Int? = null, // Color as ARGB int
-    val imageUri: String? = null // URI of the image
+    val color: Int? = null,
+    val imageUri: String? = null
 )
 
 
@@ -87,34 +99,30 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Get DayStyle (color or image)
     fun getDayStyleFlow(month: String, day: Int): Flow<DayStyle> {
-        val key = stringPreferencesKey("$month-$day") // Use stringPreferencesKey
+        val key = stringPreferencesKey("$month-$day")
         return dataStore.data.map { preferences ->
             val json = preferences[key]
-            json?.let { deserializeDayStyle(it) } ?: DayStyle() // Deserialize or return default
+            json?.let { deserializeDayStyle(it) } ?: DayStyle()
         }
     }
 
     fun setDayStyle(month: String, day: Int, dayStyle: DayStyle) {
-        val key = stringPreferencesKey("$month-$day") // Use stringPreferencesKey
+        val key = stringPreferencesKey("$month-$day")
         lifecycleScope.launch {
             dataStore.edit { preferences ->
-                preferences[key] = serializeDayStyle(dayStyle) // Store serialized JSON
+                preferences[key] = serializeDayStyle(dayStyle)
             }
         }
     }
 
 }
 
-// Function to serialize/deserialize DayStyle (using JSON/Gson/other library)
 fun serializeDayStyle(dayStyle: DayStyle): String {
-    // Serialize dayStyle to JSON string
     return Gson().toJson(dayStyle)
 }
 
 fun deserializeDayStyle(json: String): DayStyle {
-    // Deserialize JSON string to DayStyle
     return Gson().fromJson(json, DayStyle::class.java)
 }
 
@@ -124,6 +132,8 @@ fun CalendarScreen(navController: NavController, currentMonth: YearMonth, activi
     val currentMonthKey = remember { "${currentMonth.year}-${currentMonth.monthValue}" }
     var selectedDay by remember { mutableStateOf<Int?>(null) }
     var showDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val calendarRef = remember { mutableStateOf<android.view.View?>(null) }
 
     Scaffold(
         topBar = {
@@ -143,32 +153,64 @@ fun CalendarScreen(navController: NavController, currentMonth: YearMonth, activi
         }
     ) { innerPadding ->
         Column(
-            modifier = Modifier.padding(innerPadding).padding(16.dp),
+            modifier = Modifier
+                .padding(innerPadding)
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(7),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                items(DayOfWeek.values()) { dayOfWeek ->
-                    Text(
-                        text = dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).take(2),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.background(Color.LightGray).fillMaxWidth().padding(4.dp)
-                    )
+            // Capture calendar using AndroidView
+            AndroidView(
+                factory = { ctx ->
+                    android.widget.FrameLayout(ctx).apply {
+                        setBackgroundColor(android.graphics.Color.WHITE)
+                        val composeView = androidx.compose.ui.platform.ComposeView(ctx).apply {
+                            setContent {
+                                Column {
+                                    LazyVerticalGrid(
+                                        columns = GridCells.Fixed(7),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        items(DayOfWeek.values()) { dayOfWeek ->
+                                            Text(
+                                                text = dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).take(2),
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier
+                                                    .background(Color.LightGray)
+                                                    .fillMaxWidth()
+                                                    .padding(4.dp)
+                                            )
+                                        }
+                                        items(currentMonth.atDay(1).dayOfWeek.value - 1) { Spacer(modifier = Modifier.size(40.dp)) }
+                                        items(currentMonth.lengthOfMonth()) { day ->
+                                            val dayStyleFlow = activity.getDayStyleFlow(currentMonthKey, day + 1)
+                                            val dayStyle by dayStyleFlow.collectAsState(initial = DayStyle())
+
+                                            DayBox(day = day + 1, dayStyle = dayStyle, onClick = {
+                                                selectedDay = day + 1
+                                                showDialog = true
+                                            })
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Legend()
+                                }
+                            }
+                        }
+                        addView(composeView)
+                        calendarRef.value = composeView
+                    }
                 }
-                items(currentMonth.atDay(1).dayOfWeek.value - 1) { Spacer(modifier = Modifier.size(40.dp)) }
-                items(currentMonth.lengthOfMonth()) { day ->
-                    val dayStyleFlow = activity.getDayStyleFlow(currentMonthKey, day + 1)
-                    val dayStyle by dayStyleFlow.collectAsState(initial = DayStyle())
+            )
 
-                    DayBox(day = day + 1, dayStyle = dayStyle, onClick = {
-                        selectedDay = day + 1
-                        showDialog = true
-                    })
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(onClick = {
+                calendarRef.value?.let { view ->
+                    val bitmap = captureViewAsBitmap(view)
+                    exportCalendar(context, bitmap)
                 }
-
-
+            }) {
+                Text("Export Calendar as Image")
             }
         }
 
@@ -183,16 +225,53 @@ fun CalendarScreen(navController: NavController, currentMonth: YearMonth, activi
         }
     }
 }
+fun captureViewAsBitmap(view: android.view.View): Bitmap {
+    val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+
+    canvas.drawColor(android.graphics.Color.WHITE)
+
+    view.draw(canvas)
+
+    return bitmap
+}
+
+
+fun exportCalendar(context: Context, bitmap: Bitmap?) {
+    if (bitmap == null) {
+        Toast.makeText(context, "Failed to capture calendar!", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    val filename = "calendar_${System.currentTimeMillis()}.png"
+    val contentValues = ContentValues().apply {
+        put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+        put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CalendarExports")
+    }
+
+    val contentResolver = context.contentResolver
+    val imageUri: Uri? = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+
+    imageUri?.let {
+        contentResolver.openOutputStream(it)?.use { outputStream ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+            Toast.makeText(context, "Calendar exported to Pictures/CalendarExports", Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+
 
 @Composable
 fun DayBox(day: Int, dayStyle: DayStyle, onClick: () -> Unit) {
     Box(
-        contentAlignment = Alignment.Center, // Align the text in the center
+        contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(40.dp)
             .padding(4.dp)
             .clickable { onClick() }
-            .background(dayStyle.color?.let { Color(it) } ?: Color.LightGray) // Default background color
+            .background(dayStyle.color?.let { Color(it) } ?: Color.LightGray)
     ) {
         if (dayStyle.imageUri != null) {
             val painter = rememberAsyncImagePainter(dayStyle.imageUri)
@@ -203,15 +282,42 @@ fun DayBox(day: Int, dayStyle: DayStyle, onClick: () -> Unit) {
             )
         }
 
-        // Overlay the day number on top of the background color or image
         Text(
             text = day.toString(),
-            color = if (dayStyle.color != null) Color.White else Color.Black, // Adjust text color for contrast
+            color = if (dayStyle.color != null) Color.White else Color.Black,
             style = MaterialTheme.typography.bodySmall
         )
     }
 }
 
+@Composable
+fun Legend() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+    ) {
+        Text("Légende:", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
+
+        colors.forEach { (color, label) ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .background(color)
+                        .border(1.dp, Color.Black)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = label, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
 
 @Composable
 fun StylePickerDialog(
@@ -239,11 +345,6 @@ fun StylePickerDialog(
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = {
-                    // Launch image picker here
-                }) {
-                    Text("Choose Image")
-                }
             }
         },
         confirmButton = {
