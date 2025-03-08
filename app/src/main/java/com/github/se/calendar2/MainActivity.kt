@@ -435,7 +435,30 @@ fun StylePickerDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismissRequest,
-        title = { Text("Choisis ton horaire:") },
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Choisis ton horaire:")
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clickable { onStyleSelected(DayStyle(color = null, imageUri = null)) }
+                        .padding(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Reset Day",
+                        tint = Color.Red,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+            }
+        },
         text = {
             Column {
                 LazyColumn {
@@ -459,26 +482,7 @@ fun StylePickerDialog(
                         }
                     }
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // Reset button (Bin Icon) to clear the selected style
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onStyleSelected(DayStyle(color = null, imageUri = null)) }
-                        .padding(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Reset Day",
-                        tint = Color.Red,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Reset", color = Color.Red)
-                }
             }
         },
         confirmButton = {
